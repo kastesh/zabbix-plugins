@@ -8,7 +8,7 @@
 # ex
 export LC_ALL=""
 export LANG="en_US.UTF-8"
-export PATH=$PATH:/sbin:/usr/sbin:$HOME/bin::/opt/MegaRAID/MegaCli
+export PATH=$PATH:/sbin:/usr/sbin:$HOME/bin:/opt/MegaRAID/MegaCli
 
 PROGNAME=$(basename $0)
 PROGPATH=$(dirname $0)
