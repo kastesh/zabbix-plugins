@@ -10,6 +10,12 @@ print_to_log(){
   fi
 }
 
+# print debug
+print_debug(){
+  msg=$1
+  [[ $DEBUG -gt 0 ]] && echo "$msg"
+}
+
 # get server and host optionf for sender
 function get_agent_info {
 
@@ -77,7 +83,7 @@ test_cache(){
   cache_age=$2
   exec_time=$3
 
-  [[ -z $exec_time ]] && exec_time=5
+  [[ -z $exec_time ]] && exec_time=2
 
   if [[ ! -f $cache_file ]]; then
     echo 1
@@ -92,5 +98,51 @@ test_cache(){
     elif [[ $delta_time -gt $cache_age ]]; then
       echo 1
     fi
+  fi
+}
+
+# from list element and descovery avriable name => pritn json
+echo_simple_json(){
+  list=$1
+  var=$2
+
+  if [[ -n ${list} ]]; then
+    JSON="{ \"data\":["
+    JSON_EL=0
+    for el in ${list}; do
+      [[ $JSON_EL -eq 1 ]] && JSON=${JSON}','
+      JSON=${JSON}"{\"{#$var}\":\"$el\"}"
+      JSON_EL=1
+    done
+    JSON=${JSON}"]}"
+    echo "$JSON"
+  fi
+}
+
+# echo multivalue json
+# input: key1=valueX;key2=valueY;key3=>valueK key1=>valueM;key2=valueB...
+# output: [{key1:valueX,key2:valueY,key3:valueK},..]
+echo_multi_json(){
+  list=$1
+
+  if [[ -n "$list" ]]; then
+    JSON="{ \"data\":["
+    JSON_EL=0
+    for el in $list; do
+      [[ $JSON_EL -eq 1 ]] && JSON=${JSON}','
+      JSON_EL=1
+      key_id=0
+      JSON=$JSON"{"
+      for pare in $(echo $el| sed -e 's/;/ /g'); do
+        [[ $key_id -gt 0 ]] && JSON=${JSON}','
+        key=$(echo "$pare" | awk -F'=' '{print $1}')
+        val=$(echo "$pare" | awk -F'=' '{print $2}')
+        JSON=$JSON"\"{#$key}\":\"$val\""
+        key_id=$(( $key_id+1 ))
+      done
+      JSON=$JSON"}"
+    done
+    JSON=${JSON}"]}"
+    echo $JSON
   fi
 }

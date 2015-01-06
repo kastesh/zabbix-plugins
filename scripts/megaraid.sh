@@ -44,7 +44,7 @@ MEGACLI="sudo $MEGACLI"
 print_usage(){
   code=$1
   echo "Usage: $PROGNAME [-hv] -t ad|ld|pd|smart -m metric -a adapter_id -d device_id"
-  echo "Discovery MegaRAID adapater IDs:"
+  echo "Discovery MegaRAID adapter IDs:"
   echo " $PROGNAME -t ad -m discovery"
   echo "Get metrics for the adapter:"
   echo " $PROGNAME -t ad -m battery_state|battery_temperature -a adapter_id]"
@@ -112,15 +112,15 @@ pd_discovery(){
   [[ -z $adapters_list ]] && exit 1
 
   pd_list=
-  for adapater in $adapters_list; do
-    pds_list=$($MEGACLI -pdList -a$adapater -NoLog | \
+  for adapter in $adapters_list; do
+    pds_list=$($MEGACLI -pdList -a$adapter -NoLog | \
      grep '\(Enclosure Device ID:\|Slot Number\)' | \
      sed -e 's/\s\+//g' | \
      awk -F':' '{if ($1 ~ /EnclosureDeviceID/) device=$2; \
       if ($1 ~ /SlotNumber/) {device=device":"$2; print device}}')
     if [[ -n $pds_list ]]; then
       for pd in $pds_list; do
-        pd_list=$pd_list"PD_ADAPTER_ID=$adapater;PD_ID=$pd "
+        pd_list=$pd_list"PD_ADAPTER_ID=$adapter;PD_ID=$pd "
       done
       pd_list=$(echo "$pd_list" | sed -e 's/\s\+$//')
     fi

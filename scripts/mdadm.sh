@@ -97,6 +97,7 @@ mdadm_metric(){
     [[ "$mdadm_state" == "active" ]]        && mdadm_state_code=7
     [[ "$mdadm_state" == "write-pending" ]] && mdadm_state_code=8
     [[ "$mdadm_state" == "active-idle" ]]   && mdadm_state_code=9
+    [[ "$mdadm_state" == "active,checking" ]] && mdadm_state_code=10
 
     active_devices=$(echo "$mdadm_info" | \
      awk -F':' '/Active Devices/{print $2}' | sed -e 's/\s\+//g')

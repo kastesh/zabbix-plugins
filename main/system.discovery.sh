@@ -290,7 +290,7 @@ function get_php_backend {
 
 # get php slow servers
 function get_disks_info {
-  disk_exclude='\(drbd\|md\)'
+  disk_exclude='\(drbd\)'
   disk_labels=`iostat -kxd | grep -v '^$' | grep -v '^\(Device\|Linux\)' | grep -v "$disk_exclude" | awk '{print $1}' | sort | uniq`
 
   if [[ -n "$disk_labels" ]]; then
@@ -477,6 +477,54 @@ function get_memcached {
   
 }
 
+get_libvirt_hosts() {
+  community_str=$1
+
+  guest_names=$(/usr/bin/snmpwalk -m ALL -v 2c -c $community_str -OX localhost libvirtGuestName)
+  guest_count=$(echo "$guest_names" | wc -l)
+  if [[ $guest_count -gt 0 ]]; then
+    IFS_BAK=$IFS
+    IFS=$'\n'
+    header=0
+    first=1
+ 
+    for line in $guest_names; do
+      snmp_id=$(echo "$line" | awk -F'=' '{print $1}' | \
+       sed -e 's/^LIBVIRT-MIB::libvirtGuestName\[STRING:\s\+//; s/\]\s\+$//;' )
+      snmp_host=$(echo "$line" | awk -F'=' '{print $2}' | \
+       sed -e 's/^\s\+STRING:\s\+//; s/\"//g')
+      #echo "|$snmp_id|$snmp_host|"
+      
+      if [[ $header -eq 0 ]]; then
+        printf "{\n"
+        printf "\t\"%s\":[\n\n" 'data'
+        header=1
+      fi
+        
+      if [[ $first -eq 0 ]]; then
+        printf "\t,\n"
+      fi
+      first=0
+      printf "\t{\n"
+      printf "\t\t\"%s\":\"%s\",\n"  '{#VHOST}'   "$snmp_host"
+      printf "\t\t\"%s\":\"%s\"\n"   '{#VID}'     "$snmp_id"
+      printf "\t}\n"
+ 
+    done
+    IFS=$IFS_BAK
+    IFS_BAK=
+
+    if [[ $header -eq 1 ]] ; then
+      printf "\n\t]\n"
+      printf "}\n"
+    fi
+ 
+  else
+    exit 0
+  fi
+
+}
+
 function get_searchd {
   conf=/etc/sysconfig
   base=searchd
@@ -568,6 +616,9 @@ mysql_db|mysql_names|mysql_replica)
 ;;
 "certs")
   get_cert_list
+;;
+"libvirt")
+  get_libvirt_hosts "$2"
 ;;
 *)
 	exit 1

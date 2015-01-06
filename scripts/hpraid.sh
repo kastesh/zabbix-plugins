@@ -82,31 +82,6 @@ print_usage(){
   exit $code
 }
 
-# print debug
-print_debug(){
-  msg=$1
-  [[ $DEBUG -gt 0 ]] && echo "$msg"
-}
-
-# test_cache /path/to/cache/file cache_ttl
-# from list element and descovery avriable name => pritn json
-echo_simple_json(){
-  list=$1
-  var=$2
-
-  if [[ -n ${list} ]]; then
-    JSON="{ \"data\":["
-    JSON_EL=0
-    for el in ${list}; do
-      [[ $JSON_EL -eq 1 ]] && JSON=${JSON}','
-      JSON=${JSON}"{\"{#$var}\":\"$el\"}"
-      JSON_EL=1
-    done
-    JSON=${JSON}"]}"
-    echo "$JSON"
-  fi
-}
-
 # controller discovery => return slot number
 cdiscovery(){
   smart_names='\(Smart Array P410\)'
@@ -291,6 +266,7 @@ pmetric(){
     pd_interface_code=255
     [[ "$pd_interface" == "SAS" ]] && pd_interface_code=1
     [[ "$pd_interface" == "SATA" ]] && pd_interface_code=2
+    [[ "$pd_interface" == "SolidStateSATA" ]]  && pd_interface_code=3
 
     pd_size_bytes_multi=$(echo "$pd_size_metric" | \
       sed -e 's/^TB$/1048576/;s/^GB$/1024/;s/^MB$/1/;')   # convert to MB
@@ -333,16 +309,22 @@ sdiscovery(){
   JSON_EL=0
   while read line; do
     [[ $(echo "$line" | grep -c "Logical Drive:") -gt 0 ]] && is_lb=1
+
     if [[ $(echo "$line" | grep -c "Disk Name:") -gt 0 ]]; then
       disk_name=$(echo "$line" | awk -F':' '/Disk Name:/ {print $2}' | sed -e 's/^\s\+//;s/\s\+$//')
       disk_id=0
+      # prin json element for fisrt disk:
+      [[ $JSON_EL -eq 1 ]] && JSON=${JSON}','
+      [[ -z "$JSON" ]] && JSON="{ \"data\":["
+      JSON=${JSON}"{\"{#HPDISK}\":\"$disk_name\",\"{#HPID}\":\"$disk_id\"}"
+      JSON_EL=1
     fi
     
     if [[ $(echo "$line" | grep -c "physicaldrive") -gt 0 ]]; then
-      [[ -z "$JSON" ]] && JSON="{ \"data\":["
-      [[ $JSON_EL -eq 1 ]] && JSON=${JSON}','
-      JSON=${JSON}"{\"{#HPDISK}\":\"$disk_name\",\"{#HPID}\":\"$disk_id\"}"
-      JSON_EL=1
+      if [[ $disk_id -gt 0 ]]; then
+        [[ $JSON_EL -eq 1 ]] && JSON=${JSON}','
+        JSON=${JSON}"{\"{#HPDISK}\":\"$disk_name\",\"{#HPID}\":\"$disk_id\"}"
+      fi
       disk_id=$(($disk_id+1))
     fi
   done <$LBTMP
