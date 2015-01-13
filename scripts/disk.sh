@@ -242,4 +242,7 @@ case $TST_TYPE in
     ;;
 esac
 
+[[ $echo_val -eq 0 ]] && send_statuses
+
+
 exit 0
