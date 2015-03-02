@@ -238,6 +238,7 @@ done
 
 [[ -z $CONFFILE ]] && CONFFILE=$CONFFILE_DEFAULT
 [[ -f $CONFFILE ]] || exit 1
+TMPFILE=${TMPFILE}_$(basename $CONFFILE | sed -e 's/\.ini$//')
 
 case $METRIC in
   'discovery')

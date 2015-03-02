@@ -26,32 +26,22 @@ LOGFILE=$LOGDIR/$TEST.log
 TMPFILE=$TMPDIR/${TEST}
 
 . $PROGPATH/zabbix_utils.sh || exit 1
+# URL for providers with external pings
+. $PROGPATH/external_ping_vars.sh || exit 1
 
 CURLCMD="/usr/bin/curl -s"
 CONNECT_TIMEOUT=30
 MAX_TIMEOUT=300
 AGENT_STRING="Mozilla/4.0 (compatible; MSIE 6.01; Windows NT 6.0)"
-CURLCMD=$CURLCMD" -A '$AGENT_STRING' --connect-timeout $CONNECT_TIMEOUT --max-time $MAX_TIMEOUT"
-
-# list of supported urls
-FRANKFURT_LEASEWEB="http://leasewebnoc.com/lg/lg.cgi?router=dtb-sr3&query=ping&protocol=IPv4&addr="
-MOSCOW_COMCOR="http://master.comcor.ru/lg/?router=Comcor%20%28AS%208732%29&query=ping&protocol=IPv4&addr="
-MOSCOW_MEGAFON="http://lg.megafon.ru/lg/lg.cgi?router=MSK-BGW-T4000-1%20Moscow&query=ping&protocol=IPv4&addr="
-MOSCOW_MTS="http://lg.mtu.ru/cgi-bin/lg.cgi?router=ss-cr01.msk:cisco&query=ping&args="
-MOSCOW_RETN_NET="http://lg.retn.net/cgi-bin/LG.cgi?r=5&q=p&a="
-MOSCOW_TTK="http://lg.ttk.ru/?query=ping&protocol=IPv4&router=mska06rb&addr="
-RIGA_TELIA="http://looking-glass.telia.net/?router=Riga&query=ping&protocol=IPv4&addr="
-SPB_RUNNET="http://noc.runnet.ru/lg/?router=spb-b57-2-gw.runnet.ru&query=ping&addr="
-STOCKHOLM_TELIA="http://looking-glass.telia.net/?router=Stockholm&query=ping&protocol=IPv4&addr="
-WASHINGTON_LEASEWEB="http://leasewebnoc.com/lg/lg.cgi?router=wdc1-cr2&query=ping&protocol=IPv4&addr="
-AMSTERDAM_TELIA="http://looking-glass.telia.net/?router=Amsterdam&query=ping&protocol=IPv4&addr="
+CURLCMD=$CURLCMD" --connect-timeout $CONNECT_TIMEOUT --max-time $MAX_TIMEOUT"
 
 print_usage(){
   code=$1
-  echo "Usage: $PROGNAME [-hv] -m status|send|receive|min|avg|max -u url_name -i ip -t 1|2|3"
+  echo "Usage: $PROGNAME [-hv] -m status|send|receive|min|avg|max -u url_name -i ip -d post_name -t 1|2|3"
   echo " -m   - metric name"
   echo " -u   - requested url"
-  echo " -i   - ip address - add to the end of url"
+  echo " -i   - ip address - finished url string"
+  echo " -d   - post request data - if defined IP address finished it"
   echo " -t   - type used check:"
   echo "        1: create cache file; not return data for zabbix"
   echo "        2: create cache file; used it (default)"
@@ -77,36 +67,64 @@ var_to_value(){
 # 4 - Unknown: Result is empty
 # 5 - Unknown: We need to correct awk script
 service_cache(){
-  url=$1
+  url_var=$1
   metric_cache=$2
+  ip=$3
+  post_var=$4
 
+  # get url from variable name
+  var_to_value $url_var
+  url=$var_value
+  if [[ -n $post_var ]]; then
+    var_to_value $post_var
+    post=$var_value
+    post=${post}${ip}
+  else
+    url=${url}${ip}
+  fi
+ 
+  # cache command and lock file
   url_cache=${metric_cache}.tmp
+  # test if there is other cache creation process
+  [[ -f $url_cache ]] && exit 1
 
-  $CURLCMD "$url" >$url_cache 2>&1
+  if [[ -z $post_var ]]; then
+    $CURLCMD -A "$AGENT_STRING" "$url" >$url_cache 2>&1
+  else
+    $CURLCMD -A "$AGENT_STRING" --data "$post" "$url" >$url_cache 2>&1
+  fi
+
   if [[ $? -gt 0 ]]; then
     echo "status:3" > $metric_cache
-    rm -f $url_cache
   else
     result_ping=$(cat $url_cache | \
      tr -d '\0' | \
-     egrep -e "^Success" -e "packet loss"  -e "^round-trip")
+     sed -e 's/<[^>]*>/\n/g;' | \
+     egrep -e "^Success" -e "packet loss"  -e "^round-trip" -e "^rtt" -e "packet loss" | \
+     sed -e 's/\([0-9{1,}]\) received/\1 packets received/' -e 's/time [0-9]*ms//')
     if [[ -z "$result_ping" ]]; then
       echo "status:4" > $metric_cache
     else
       echo ${result_ping} | \
        awk '$0~/packet loss/{print $1,$4, $13;} $0~/^Success/{print $6, $10;}' - | \
        sed -e 's/[\(\)\,]//g' -e 's/[ \/]/;/g' | \
-       awk -F';' 'BEGIN{status=5}\
-       {if ($2 == 0)\
+       awk -F';' 'BEGIN{status=5; p_loss=0; p_receive=0}\
+       {if (NF == 6){max=$5;} else {max=$6;};\
+        if ($2 == 0)\
           status=2;\
         else if ($2<$1)\
           status=1;\
         else\
           status=0;\
-        printf "status:%s\nsend:%s\nreceive:%s\nmin:%s\navg:%s\nmax:%s\n",status,$1,$2,$3,$4,$5;\
+        if ($1>0){\
+          p_receive=$2*100/$1;\
+          p_loss=100-p_receive;\
+        };\
+        printf "p_loss:%.2f\np_receive:%.2f\nstatus:%s\nsend:%s\nreceive:%s\nmin:%s\navg:%s\nmax:%s\n",p_loss,p_receive,status,$1,$2,$3,$4,max;\
        }' > $metric_cache
     fi
   fi
+  # delete lock file
   rm -f $url_cache
 }
 
@@ -117,20 +135,16 @@ service_status(){
               # 2 - get data (if cache old, it will create/update the cache file), 
               # 3 - get data (if cache exist, doesn't create new)
   ip=$4       # ip address, if exists add to the end of the url string
+  post_var=$5     # post request variable name
 
   [[ ( -z $metric ) || ( -z $url_var ) ]] && exit 1
   [[ -z $cache ]] && cache=2
   
-  # get url from variable name
-  var_to_value $url_var
-  url=$var_value
-  [[ -n $ip ]] && url=${url}${ip}
-
   metric_cache=${TMPFILE}_${url_var}_${ip}
   metric_ttl=299
 
   if [[ $cache -eq 1 ]]; then
-    service_cache "$url" "$metric_cache"
+    service_cache "$url_var" "$metric_cache" "$ip" "$post_var"
     exit 1
   fi
 
@@ -138,25 +152,28 @@ service_status(){
   use_cache=$(test_cache $metric_cache $metric_ttl)
   if [[ $use_cache -eq 1 ]]; then
     if [[ $cache -eq 2 ]]; then
-      service_cache "$url" "$metric_cache"
+      service_cache "$url_var" "$metric_cache" "$ip" "$post_var"
     fi
   fi
   grep "^$metric:" $metric_cache | cut -d':' -f2
 }
 
-while getopts ":m:i:u:c:vh" opt; do
+while getopts ":m:i:u:d:c:vh" opt; do
   case $opt in
     "m")
-      METRIC=$OPTARG          # requested metric
+      METRIC=$OPTARG            # requested metric
       ;;
     "u")
-      URL_VAR=$OPTARG             # url
+      URL_VAR=$OPTARG           # url name
     ;;
     "i")
-      IP=$OPTARG
+      IP=$OPTARG                # IP address
     ;;
     "c")
-      CACHE=$OPTARG           # cache type
+      CACHE=$OPTARG             # cache type
+    ;;
+    "d")
+      POST_VAR=$OPTARG              # post request name
     ;;
     h)
       print_usage 0
@@ -170,4 +187,4 @@ while getopts ":m:i:u:c:vh" opt; do
   esac
 done
 
-service_status "$METRIC" "$URL_VAR" "$CACHE" "$IP"
+service_status "$METRIC" "$URL_VAR" "$CACHE" "$IP" "$POST_VAR"
