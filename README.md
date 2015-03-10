@@ -136,16 +136,17 @@ The discovery rule:
 Template uses value mapping for statuses.
 
 ###### DNS request status
-0. NS: OK
-1. NS: Found additional IP in a reply
-3. NS: Not all test IP found in a reply
-4. NS: Not found records
-5. NS: Return totally different IPs
-101. dig util: Usage error
-108. dig util: Couldn't open batch file
-109. dig util: No reply from server
-110. dig util: Internal error
-
+```
+0   -> NS: OK
+1   -> NS: Found additional IP in a reply
+3   -> NS: Not all test IP found in a reply
+4   -> NS: Not found records
+5   -> NS: Return totally different IPs
+101 -> dig util: Usage error
+108 -> dig util: Couldn't open batch file
+109 -> dig util: No reply from server
+110 -> dig util: Internal error
+```
 
 
 
