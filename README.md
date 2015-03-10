@@ -120,18 +120,21 @@ Zabbix agent config contains the definition for the check,
 
 ##### Zabbix template
 Zabbix template contains next discovery rules:
+
 1. Discovery FQDN names and NS servers - google
 2. Discovery FQDN names and NS servers - opendns
+
 This tests use UserParameter dig_status, which defined in the zabbix agent config file.
 
 The discovery rule:
+
 1. get next information from script's config file:
-  * REQ_FQDN - tested DNS name
-  * REQ_DNS  - selected NS server
-  * RTN_IP   - expected IP address
+ * REQ_FQDN - tested DNS name
+ * REQ_DNS  - selected NS server
+ * RTN_IP   - expected IP address
 2. create two checks (Zabbix trapper) on each triple:
-  * Request status for REQ_FQDN 
-  * IP address for REQ_FQDN
+ * Request status for REQ_FQDN 
+ * IP address for REQ_FQDN
 
 Template uses value mapping for statuses.
 
