@@ -148,9 +148,7 @@
                                     <name>RAID Controller</name>
                                 </application>
                             </applications>
-                            <valuemap>
-                                <name>megacli - battery state</name>
-                            </valuemap>
+                            <valuemap/>
                             <logtimefmt/>
                         </item_prototype>
                         <item_prototype>
