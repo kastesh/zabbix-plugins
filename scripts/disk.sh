@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 ### statistics for disk installed on the server
 ### auth by ksh770
@@ -26,7 +26,6 @@ CONFFILE=/etc/zabbix/zabbix_agentd.conf
 LOGDIR=$WORKDIR/log
 [[ ! -d $LOGDIR ]]  && mkdir $LOGDIR
 LOGFILE=$LOGDIR/$TEST.log
-TMPFILE=$TMPDIR/${DATE_TM}_${TEST}
 
 SERVER=""       # Zabbix Server from config file
 HOST=""         # Zabbix Client Name from config file
@@ -43,7 +42,7 @@ TST_TYPE="status"
 EXCL_DEV='drbd'
 WAITTIME=60         # iostat collects information within the specified time
 DEVICE="all"
-
+TMPFILE=$TMPDIR/$(date +%s)_
 
 print_usage(){
   code=$1
@@ -60,6 +59,39 @@ print_usage(){
   echo
 
   exit $code
+}
+
+disk_discovery(){
+    exclude_list="${1}"
+
+    exclude_regx='\('$(echo "$exclude_list" | sed -e 's/,/\\\|/g')'\)'
+
+
+    disk_labels=`iostat -kxd | grep -v '^$' | \
+        grep -v '^\(Device\|Linux\)' | grep -v "$exclude_regx" | \
+        awk '{print $1}' | sort | uniq`
+
+
+    d_list=
+    if [[ -n "$disk_labels" ]]; then
+        for label in $disk_labels; do
+
+            lname=$label
+            is_lvm=`echo $label | grep -c '^dm-'`
+            if [[ $is_lvm -gt 0 ]]; then
+                link_name=`find /dev/mapper/ -maxdepth 1 -type l -ls | \
+                    grep "$label$" | awk '{print $11}' | sed -e 's:^/dev/mapper/::'`
+                [[ -n $link_name ]] && lname=$link_name
+                exclude_lv=$(echo "$link_name" | grep -c '\(lvsnap\)' )
+                [[ $exclude_lv -gt 0 ]] && continue
+            fi
+            d_list=$d_list"DLABEL=$label;DNAME=$lname "
+        done
+        d_list=$(echo "$d_list" | sed -e 's/\s\+$//')
+    fi
+
+    echo_multi_json "$d_list"
+    exit 0
 }
 
 # get smartctl info for disk (all options send by trapper, but initial created by zabbix_agent)
@@ -225,21 +257,23 @@ while getopts ":t:e:d:vh" opt; do
   esac
 done
 
-# get client and service addresses
-get_agent_info
 TMPFILE=${TMPFILE}_${TST_TYPE}_$(basename ${DEVICE})
 
 # create statistics
 case $TST_TYPE in
-  status|iostat)
-    get_iostat "$EXCL_DEV"; echo_val=0
-    ;;
-  smart)
-    get_smartctl "$DEVICE" "$DEVICE_TYPE"; echo_val=1
-    ;;
-  *)
-    print_usage 1
-    ;;
+    status|iostat)
+        get_agent_info
+        get_iostat "$EXCL_DEV"; echo_val=0
+        ;;
+    discovery)
+        disk_discovery "$EXCL_DEV"; echo_val=1
+        ;;
+    smart)
+        get_smartctl "$DEVICE" "$DEVICE_TYPE"; echo_val=1
+        ;;
+    *)
+        print_usage 1
+        ;;
 esac
 
 [[ $echo_val -eq 0 ]] && send_statuses
